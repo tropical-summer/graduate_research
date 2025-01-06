@@ -8,7 +8,7 @@
 #include <std_msgs/msg/string.hpp>
 #include <std_msgs/msg/byte_multi_array.hpp>
 
-#include <node_options/cli_options.hpp>
+#include "node_options/cli_options.hpp"
 
 static
 node_options::Options
