@@ -18,7 +18,7 @@ set(LIBRARY_DEPENDENCIES
     node_options
 )
 
-# 実行ファイルの追加　ここではsrc/publisher_node.cppをpublisher_nodeという名前で登録
+# 実行ファイルの追加　ここではsrc/subscriber_node.cppをsubscriber_nodeという名前で登録
 add_executable(${LIBRARY_NAME} src/${LIBRARY_NAME}.cpp)
 
 # インクルードしたいincludeフォルダの場所を指定
