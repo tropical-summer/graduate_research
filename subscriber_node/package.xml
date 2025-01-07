@@ -1,7 +1,7 @@
 <package format="2">
-  <name>publisher_node</name>
+  <name>subscriber_node</name>
   <version>0.0.0</version>
-  <description>Custom Publisher Node</description>
+  <description>Custom Subscriber Node</description>
 
   <maintainer email="user@example.com">Yuma Fujiwara</maintainer>
   <license>Apache-2.0</license>
