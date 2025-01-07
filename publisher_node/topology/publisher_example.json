@@ -1,4 +1,0 @@
-{
-  "node_name": "cordoba",
-  "publishers": [{ "topic_name": "amazon", "msg_type": "stamped9_float32", "period_ms": 10 }]
-}
