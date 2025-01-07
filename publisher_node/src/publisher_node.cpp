@@ -25,6 +25,10 @@ parse_options(int argc, char ** argv)
   return options;
 }
 
+std::string byteArrayToString(const std::vector<uint8_t>& data) {
+  return std::string(data.begin(), data.end());
+}
+
 
 class Publisher : public rclcpp::Node
 {
@@ -44,13 +48,14 @@ public:
         std_msgs::msg::ByteMultiArray byte_msg;
         byte_msg.data = *msg;
 
+        RCLCPP_INFO(this->get_logger(), "%s", byteArrayToString(byte_msg.data));
         pub_->publish(std::move(byte_msg));
       };
 
     // chatterトピックの送信設定
     rclcpp::QoS qos(rclcpp::KeepLast(10));
     pub_ = create_publisher<std_msgs::msg::ByteMultiArray>(options.topic_name, qos);
-    // publish_messageの100ミリ秒周期でのタイマー実行
+    // publish_messageのPERIOD_MS周期でのタイマー実行
     timer_ = create_wall_timer(std::chrono::milliseconds(options.period_ms), publish_message);
   }
 
