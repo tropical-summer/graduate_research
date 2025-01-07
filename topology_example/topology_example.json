@@ -1,0 +1,32 @@
+{
+    "hosts": [
+        {
+            "host_name": "host1",
+            "nodes": [
+                {
+                    "node_name": "pub1",
+                    "publisher": [
+                        {"topic_name": "amazon", "payload_size": 32, "period_ms": 1000}
+                    ]
+                },
+                {
+                    "node_name": "pub2",
+                    "publisher": [
+                        {"topic_name": "inazuma", "payload_size": 32, "period_ms": 1000}
+                    ]
+                }
+            ]
+        },
+        {
+            "host_name": "host2",
+            "nodes": [
+                {
+                    "node_name": "sub1",
+                    "subscriber": [
+                        {"topic_name": "amazon"}
+                    ]
+                }
+            ]
+        }
+    ]
+}
