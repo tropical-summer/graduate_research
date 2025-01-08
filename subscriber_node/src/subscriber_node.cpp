@@ -51,6 +51,7 @@ private:
 int main(int argc, char * argv[])
 {
   auto options = parse_options(argc, argv);
+  std::cout << options << "\n" << "Start Subscriber!" << std::endl;
 
   // クライアントライブラリの初期化
   setvbuf(stdout, NULL, _IONBF, BUFSIZ);
