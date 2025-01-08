@@ -4,3 +4,4 @@ log/
 
 .vscode/
 docker-compose.yml
+Dockerfiles/
