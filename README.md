@@ -18,7 +18,13 @@ cd install/publisher_node/lib/publisher_node
 ```
 
 ## Docker compose
-いくつかのコンテナを同時に立ち上げる
+まずはPythonプロジェクトを用いて、JSONファイル(のパス)からDockerfileとdocker-compose.ymlを生成
 ```bash
-docker-compose.yml
+cd parse_json_to_dockerfiles
+python3 parse_json.py ../examples/topology_example/topology_example.json 
+```
+生成したdocker-compose.ymlからコンテナイメージを生成し、実行する。別のdocker-compose.ymlを実行していた場合は、`docker-compose down`を叩いておく
+```bash
+docker-compose build --no-cache
+docker-compose up
 ```
