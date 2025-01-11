@@ -14,7 +14,7 @@ colcon build
 ``` bash
 source install/setup.bash
 cd install/publisher_node/lib/publisher_node
-./publisher_node_exe --node_name my_pub --topic_names sample,sample2 -s 64 -p 20
+./publisher_node_exe --node_name my_pub --topic_names sample,sample2 -s 64,126 -p 500,1000
 ```
 別のターミナル
 ``` bash
