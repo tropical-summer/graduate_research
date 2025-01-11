@@ -6,6 +6,8 @@
 #include <std_msgs/msg/byte_multi_array.hpp>
 
 #include "node_options/cli_options.hpp"
+#include "publisher_node/msg/performance_header.hpp"
+#include "publisher_node/msg/int_message.hpp"
 
 static
 node_options::Options
@@ -22,11 +24,6 @@ parse_options(int argc, char ** argv)
   return options;
 }
 
-std::string byteArrayToString(const std::vector<uint8_t>& data) {
-  return std::string(data.begin(), data.end());
-}
-
-
 class Subscriber : public rclcpp::Node
 {
 public:
@@ -34,18 +31,26 @@ public:
     : Node(options.node_name)
     {
         auto callback =
-          [this](const std_msgs::msg::ByteMultiArray byte_msg) -> void
+          [this](const publisher_node::msg::IntMessage::SharedPtr message_) -> void
           {
-            RCLCPP_INFO(this->get_logger(), "%s", byteArrayToString(byte_msg.data));
+            // message_->dataを16進数形式で表示 (0埋めはしない)
+            std::ostringstream oss;
+            for (const auto& byte : message_->data)
+            {
+                oss << std::hex << (int)byte << " ";
+            }
+
+            // RCLCPP_INFOで16進数データを表示
+            RCLCPP_INFO(this->get_logger(), "Data: %s", oss.str().c_str());
           };
         
         rclcpp::QoS qos(rclcpp::KeepLast(10));
-        sub_ = create_subscription<std_msgs::msg::ByteMultiArray>(
+        sub_ = create_subscription<publisher_node::msg::IntMessage>(
             options.topic_name, qos, callback);
     }
 
 private:
-    rclcpp::Subscription<std_msgs::msg::ByteMultiArray>::SharedPtr sub_;
+    rclcpp::Subscription<publisher_node::msg::IntMessage>::SharedPtr sub_;
 };
 
 int main(int argc, char * argv[])

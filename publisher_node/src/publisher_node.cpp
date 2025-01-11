@@ -9,7 +9,10 @@
 #include <std_msgs/msg/byte_multi_array.hpp>
 
 #include "node_options/cli_options.hpp"
+#include "publisher_node/msg/performance_header.hpp"
+#include "publisher_node/msg/int_message.hpp"
 
+// コマンドラインオプション
 static
 node_options::Options
 parse_options(int argc, char ** argv)
@@ -25,11 +28,6 @@ parse_options(int argc, char ** argv)
   return options;
 }
 
-std::string byteArrayToString(const std::vector<uint8_t>& data) {
-  return std::string(data.begin(), data.end());
-}
-
-
 class Publisher : public rclcpp::Node
 {
 public:
@@ -38,30 +36,39 @@ public:
   {
     // タイマー実行されるイベントハンドラー関数
     auto publish_message =
-      [this, options]() -> void  // ラムダ式による関数オブジェクトの定義
+      [this, options]() -> void  
       {
         // 送信するメッセージの作成
-        std::shared_ptr<std::vector<uint8_t>> msg = std::make_shared<std::vector<uint8_t>>(options.payload_size);
+        auto message_ = std::make_shared<publisher_node::msg::IntMessage>();
+        message_->data.resize(options.payload_size);
+        std::fill(message_->data.begin(), message_->data.end(), 0);
 
-        // 配列の内容を0埋めし、文字列に変換
-        std::memset(msg.get(), 0, options.payload_size);
-        std_msgs::msg::ByteMultiArray byte_msg;
-        byte_msg.data = *msg;
+        // message_->dataを16進数形式で表示 (0埋めはしない)
+        std::ostringstream oss;
+        for (const auto& byte : message_->data)
+        {
+            oss << std::hex << (int)byte << " ";
+        }
 
-        RCLCPP_INFO(this->get_logger(), "%s", byteArrayToString(byte_msg.data));
-        pub_->publish(std::move(byte_msg));
+        // RCLCPP_INFOで16進数データを表示
+        RCLCPP_INFO(this->get_logger(), "Data: %s", oss.str().c_str());
+
+        pub_->publish(*message_);
       };
 
-    // chatterトピックの送信設定
+    // Qos設定
     rclcpp::QoS qos(rclcpp::KeepLast(10));
-    pub_ = create_publisher<std_msgs::msg::ByteMultiArray>(options.topic_name, qos);
+
     // publish_messageのPERIOD_MS周期でのタイマー実行
+    pub_ = create_publisher<publisher_node::msg::IntMessage>(options.topic_name, qos);
     timer_ = create_wall_timer(std::chrono::milliseconds(options.period_ms), publish_message);
   }
 
 private:
-  rclcpp::Publisher<std_msgs::msg::ByteMultiArray>::SharedPtr pub_;
+  rclcpp::Publisher<publisher_node::msg::IntMessage>::SharedPtr pub_;
   rclcpp::TimerBase::SharedPtr timer_;
+
+  publisher_node::msg::IntMessage::SharedPtr message_;
 };
 
 int main(int argc, char * argv[])
