@@ -9,6 +9,8 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(node_options REQUIRED)
+find_package(publisher_node REQUIRED)
+
 
 # 変数の設定
 set(LIBRARY_NAME ${PROJECT_NAME})
@@ -16,6 +18,7 @@ set(LIBRARY_DEPENDENCIES
     rclcpp
     std_msgs
     node_options
+    publisher_node
 )
 
 # 実行ファイルの追加　ここではsrc/subscriber_node.cppをsubscriber_nodeという名前で登録
