@@ -27,30 +27,36 @@ parse_options(int argc, char ** argv)
 class Subscriber : public rclcpp::Node
 {
 public:
-    explicit Subscriber(const node_options::Options & options)
+  explicit Subscriber(const node_options::Options & options)
     : Node(options.node_name)
-    {
-        auto callback =
-          [this](const publisher_node::msg::IntMessage::SharedPtr message_) -> void
-          {
-            // message_->dataを16進数形式で表示 (0埋めはしない)
-            std::ostringstream oss;
-            for (const auto& byte : message_->data)
-            {
-                oss << std::hex << (int)byte << " ";
-            }
+  {
+    // 複数のトピック名を扱う場合
+    for (size_t i = 0; i < options.topic_names.size(); ++i) {
+      const std::string & topic_name = options.topic_names[i];
 
-            // RCLCPP_INFOで16進数データを表示
-            RCLCPP_INFO(this->get_logger(), "Data: %s", oss.str().c_str());
-          };
+      auto callback = [this, topic_name](const publisher_node::msg::IntMessage::SharedPtr message_) -> void{
+        // message_->dataを16進数形式で表示 (0埋めはしない)
+        std::ostringstream oss;
+        for (const auto& byte : message_->data)
+        {
+            oss << std::hex << (int)byte << " ";
+        }
+
+        RCLCPP_INFO(this->get_logger(), "Data: %s", oss.str().c_str());
+      };
         
-        rclcpp::QoS qos(rclcpp::KeepLast(10));
-        sub_ = create_subscription<publisher_node::msg::IntMessage>(
-            options.topic_name, qos, callback);
+      rclcpp::QoS qos(rclcpp::KeepLast(10));
+
+      // Subscriber作成
+      auto subscriber = create_subscription<publisher_node::msg::IntMessage>(topic_name, qos, callback);
+      subscribers_.emplace(topic_name, subscriber);
     }
+  }
 
 private:
-    rclcpp::Subscription<publisher_node::msg::IntMessage>::SharedPtr sub_;
+  // トピックごとのPublisher
+  std::unordered_map<std::string, rclcpp::Subscription<publisher_node::msg::IntMessage>::SharedPtr> subscribers_;
+  publisher_node::msg::IntMessage::SharedPtr message_;
 };
 
 int main(int argc, char * argv[])
@@ -58,7 +64,6 @@ int main(int argc, char * argv[])
   auto options = parse_options(argc, argv);
   std::cout << options << "\n" << "Start Subscriber!" << std::endl;
 
-  // クライアントライブラリの初期化
   setvbuf(stdout, NULL, _IONBF, BUFSIZ);
   rclcpp::init(argc, argv);
 
