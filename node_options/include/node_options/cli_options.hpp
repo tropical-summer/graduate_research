@@ -18,9 +18,9 @@ public:
  void parse(int argc, char ** argv);
 
  std::string node_name;
- std::string topic_name;
- int payload_size;
- int period_ms;
+ std::vector<std::string> topic_names;
+ std::vector<int> payload_size;
+ std::vector<int> period_ms;
 };
 
 std::ostream & operator<<(std::ostream & os, const Options & options);
