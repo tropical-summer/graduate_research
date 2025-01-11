@@ -10,11 +10,17 @@ colcon build
 ```
 
 ## Run
-例えば、publisher_nodeを立ち上げたい場合
+例えば、publisher_nodeとsubscriber_nodeを立ち上げたい場合
 ``` bash
 source install/setup.bash
 cd install/publisher_node/lib/publisher_node
-./publisher_node --node_name my_node --topic_name sample -s 64 -p 20
+./publisher_node_exe --node_name my_pub --topic_names sample,sample2 -s 64 -p 20
+```
+別のターミナル
+``` bash
+source install/setup.bash
+cd install/subscriber_node/lib/subscriber_node
+./subscriber_node --node_name my_sub --topic_names sample,sample2
 ```
 
 ## Docker compose
