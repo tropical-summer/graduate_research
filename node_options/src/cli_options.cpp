@@ -12,7 +12,7 @@ namespace node_options
 // デフォルト値
 Options::Options()
 {
-
+    eval_time = 60;
 }
 
 // コンストラクタ
@@ -27,12 +27,12 @@ void Options::parse(int argc, char ** argv)
 {
     cxxopts::Options options(argv[0], "ROS2 performance benchmark");
 
-    options.add_options()(
-        "node_name", "name for this node", cxxopts::value<std::string>(node_name))(
-        "topic_names", "topic_name for this node", cxxopts::value<std::vector<std::string>>(topic_names))(
-        "s, size", "payload size", cxxopts::value<std::vector<int>>(payload_size), "bytes")(
-        "p, period", "publish frequency", cxxopts::value<std::vector<int>>(period_ms), "ms_sec"    
-        );
+    options.add_options()
+        ("node_name", "name for this node", cxxopts::value<std::string>(node_name))
+        ("topic_names", "topic_name for this node", cxxopts::value<std::vector<std::string>>(topic_names))
+        ("s, size", "payload size", cxxopts::value<std::vector<int>>(payload_size), "bytes")
+        ("p, period", "publish frequency", cxxopts::value<std::vector<int>>(period_ms), "ms_sec")
+        ("eval_time", "period of publishing", cxxopts::value<int>(eval_time), "sec");
 
     try {
         auto result = options.parse(argc, argv);
@@ -56,6 +56,7 @@ void Options::parse(int argc, char ** argv)
 std::ostream & operator<<(std::ostream & os, const Options & options)
 {
     os << "Node Name: " << options.node_name << std::endl;
+    os << "Evaluation time: " << options.eval_time << "s" << std::endl;
 
     for (size_t i = 0; i < options.topic_names.size(); ++i) {
         os << "Topic: " << options.topic_names[i] << std::endl;
