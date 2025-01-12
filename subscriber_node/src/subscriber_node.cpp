@@ -42,7 +42,12 @@ public:
             oss << std::hex << (int)byte << " ";
         }
 
-        RCLCPP_INFO(this->get_logger(), "Data: %s", oss.str().c_str());
+        const builtin_interfaces::msg::Time time_stamp = message_->header.stamp;
+        oss << std::dec <<"Time: " << time_stamp.sec << "." << time_stamp.nanosec;
+
+        int current_pub_idx = message_->header.pub_idx;
+
+        RCLCPP_INFO(this->get_logger(), "Topic: %s Data: %s Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
       };
         
       rclcpp::QoS qos(rclcpp::KeepLast(10));

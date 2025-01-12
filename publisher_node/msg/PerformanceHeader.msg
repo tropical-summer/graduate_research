@@ -1,4 +1,3 @@
 builtin_interfaces/Time stamp
-uint32 tracking_number
-float32 frequency
-uint32 size
+string node_name
+uint32 pub_idx

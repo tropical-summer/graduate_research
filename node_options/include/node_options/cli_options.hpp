@@ -21,6 +21,7 @@ public:
  std::vector<std::string> topic_names;
  std::vector<int> payload_size;
  std::vector<int> period_ms;
+ int eval_time;
 };
 
 std::ostream & operator<<(std::ostream & os, const Options & options);
