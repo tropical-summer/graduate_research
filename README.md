@@ -14,13 +14,19 @@ colcon build
 ``` bash
 source install/setup.bash
 cd install/publisher_node/lib/publisher_node
-./publisher_node_exe --node_name my_pub --topic_names sample,sample2 -s 64,126 -p 500,1000
+./publisher_node_exe --node_name my_node --topic_names sample,sample2 -s 8,16  -p 1000,500
 ```
 別のターミナル
 ``` bash
 source install/setup.bash
 cd install/subscriber_node/lib/subscriber_node
-./subscriber_node --node_name my_sub --topic_names sample,sample2
+./subscriber_node --node_name my_sub --topic_names sample3
+```
+Pub/Sub兼任ノード
+``` bash
+source install/setup.bash
+cd install/intermediate_node/lib/intermediate_node
+./intermediate_node --node_name my_pubsub --topic_names_pub sample2,sample3 --topic_names_sub sample,sample2 -s 8,16 -p 500,1000
 ```
 
 ## Docker compose
