@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <cstdio>
-#include <chrono>
 #include <memory>
 #include <string>
 #include <rclcpp/rclcpp.hpp>
@@ -42,11 +41,11 @@ class Publisher : public rclcpp::Node
         int period_ms = options.period_ms[i];
 
         pub_idx_[topic_name] = 0;
-        auto start_time = this->get_clock()->now();
+        start_time_[topic_name] = this->get_clock()->now();
 
         // タイマー実行されるイベントハンドラー関数を生成
         auto publish_message =
-          [this, topic_name, payload_size, start_time, &options]() -> void
+          [this, topic_name, payload_size, &options]() -> void
           {
             int current_pub_idx = pub_idx_[topic_name];
             
@@ -56,15 +55,16 @@ class Publisher : public rclcpp::Node
             std::fill(message_->data.begin(), message_->data.end(), 0);
 
             auto time_stamp = this->get_clock()->now();
-            if((time_stamp.seconds() - start_time.seconds()) >= options.eval_time) {
+            if((time_stamp.seconds() - start_time_[topic_name].seconds()) >= options.eval_time) {
               RCLCPP_INFO(this->get_logger(), "Topic %s has reached the evaluation time.", topic_name.c_str());
               timers_[topic_name]->cancel();
               return;
             }
 
-            message_->header.stamp.sec = static_cast<int32_t>(time_stamp.seconds() - start_time.seconds());
-            message_->header.stamp.nanosec = static_cast<uint32_t>((time_stamp.nanoseconds() - start_time.nanoseconds()) % 1000000000);
+            message_->header.stamp.sec = static_cast<int32_t>(time_stamp.seconds() - start_time_[topic_name].seconds());
+            message_->header.stamp.nanosec = static_cast<uint32_t>((time_stamp.nanoseconds() - start_time_[topic_name].nanoseconds()) % 1000000000);
             message_->header.pub_idx = current_pub_idx;
+            message_->header.node_name = options.node_name;
 
             // message->dataを16進数形式で表示 (0埋めはしない)
             std::ostringstream oss;
@@ -102,6 +102,7 @@ class Publisher : public rclcpp::Node
     std::unordered_map<std::string, rclcpp::TimerBase::SharedPtr> timers_;
 
     std::unordered_map<std::string, uint32_t> pub_idx_;
+    std::unordered_map<std::string, rclcpp::Time> start_time_;
 };
 
 int main(int argc, char * argv[])
