@@ -7,6 +7,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <unordered_map>
+#include <sstream>
+#include <fstream>
+#include <filesystem>
 
 #include "node_options/cli_options.hpp"
 #include "publisher_node/msg/performance_header.hpp"
@@ -26,6 +29,37 @@ parse_options(int argc, char ** argv)
   auto options = node_options::Options(non_ros_argc, non_ros_args_c_strings.data());
 
   return options;
+}
+
+static
+void
+create_result_directory(const node_options::Options & options)
+{
+  std::stringstream ss;
+  ss << options.node_name << "_log" ;
+  const std::string result_dir_name = ss.str();
+  std::filesystem::create_directories(result_dir_name); // install/publisher_node/lib/publisher_node/my_node_log みたいな感じ
+  ss.str("");
+  ss.clear();
+
+  std::vector<std::string> log_file_paths;
+  for (size_t i = 0; i < options.topic_names.size(); ++i) {
+    ss << result_dir_name << "/" << options.topic_names[i] << "_log.txt";
+    std::string log_file_path = ss.str();
+    log_file_paths.push_back(log_file_path);
+    ss.str("");
+    ss.clear();
+  }
+
+  for (const auto& file_path : log_file_paths) {
+    std::ofstream ofs(file_path); // ファイルを開く（存在しない場合は作成）
+    if(ofs){
+      std::cout << "Log file created: " << file_path << std::endl;
+      ofs.close();
+    } else {
+      std::cerr << "Failed to create: " << file_path << std::endl;
+    }
+  }
 }
 
 class Publisher : public rclcpp::Node
@@ -58,6 +92,7 @@ class Publisher : public rclcpp::Node
             if((time_stamp.seconds() - start_time_[topic_name].seconds()) >= options.eval_time) {
               RCLCPP_INFO(this->get_logger(), "Topic %s has reached the evaluation time.", topic_name.c_str());
               timers_[topic_name]->cancel();
+              end_time_[topic_name] = this->get_clock()->now();
               return;
             }
 
@@ -71,8 +106,9 @@ class Publisher : public rclcpp::Node
             for (const auto& byte : message_->data) {
               oss << std::hex << (int)byte << " ";
             }
+            oss << std::dec <<"Time: " << std::fixed << std::setprecision(9) << static_cast<double>(time_stamp.nanoseconds() - start_time_[topic_name].nanoseconds()) / 1e9;
 
-            RCLCPP_INFO(this->get_logger(), "Topic: %s, Data: %s, Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
+            RCLCPP_INFO(this->get_logger(), "Publish/ Topic: %s, Data: %s, Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
 
             // 該当トピックのPublisherでメッセージ送信
             publishers_[topic_name]->publish(*message_);
@@ -103,11 +139,13 @@ class Publisher : public rclcpp::Node
 
     std::unordered_map<std::string, uint32_t> pub_idx_;
     std::unordered_map<std::string, rclcpp::Time> start_time_;
+    std::unordered_map<std::string, rclcpp::Time> end_time_;
 };
 
 int main(int argc, char * argv[])
 {
   auto options = parse_options(argc, argv);
+  create_result_directory(options) ;
   std::cout << options << "\n" << "Start Publisher!" << std::endl;
 
   // クライアントライブラリの初期化

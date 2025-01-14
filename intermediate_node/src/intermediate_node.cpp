@@ -5,6 +5,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <unordered_map>
+#include <sstream>
+#include <fstream>
+#include <filesystem>
 
 #include "node_options_intermediate/cli_options.hpp"
 #include "publisher_node/msg/performance_header.hpp"
@@ -24,6 +27,44 @@ parse_options(int argc, char ** argv)
   auto options = node_options::Options(non_ros_argc, non_ros_args_c_strings.data());
 
   return options;
+}
+
+static
+void
+create_result_directory(const node_options::Options & options)
+{
+  std::stringstream ss;
+  ss << options.node_name << "_log" ;
+  const std::string result_dir_name = ss.str();
+  std::filesystem::create_directories(result_dir_name); 
+  ss.str("");
+  ss.clear();
+
+  std::vector<std::string> log_file_paths;
+  for (size_t i = 0; i < options.topic_names_pub.size(); ++i) {
+    ss << result_dir_name << "/" << options.topic_names_pub[i] << "_pub_log.txt";
+    std::string log_file_path = ss.str();
+    log_file_paths.push_back(log_file_path);
+    ss.str("");
+    ss.clear();
+  }
+  for (size_t i = 0; i < options.topic_names_sub.size(); ++i) {
+    ss << result_dir_name << "/" << options.topic_names_sub[i] << "_sub_log.txt";
+    std::string log_file_path = ss.str();
+    log_file_paths.push_back(log_file_path);
+    ss.str("");
+    ss.clear();
+  }
+
+  for (const auto& file_path : log_file_paths) {
+    std::ofstream ofs(file_path); // ファイルを開く（存在しない場合は作成）
+    if(ofs){
+      std::cout << "Log file created: " << file_path << std::endl;
+      ofs.close();
+    } else {
+      std::cerr << "Failed to create: " << file_path << std::endl;
+    }
+  }
 }
 
 class PubSub : public rclcpp::Node
@@ -63,6 +104,7 @@ class PubSub : public rclcpp::Node
                 if((time_stamp.seconds() - start_time_pub_[topic_name].seconds()) >= options.eval_time) {
                 RCLCPP_INFO(this->get_logger(), "Topic %s has reached the evaluation time.", topic_name.c_str());
                 timers_[topic_name]->cancel();
+                end_time_pub_[topic_name] = this->get_clock()->now();
                 return;
                 }
 
@@ -76,8 +118,9 @@ class PubSub : public rclcpp::Node
                 for (const auto& byte : message_->data) {
                 oss << std::hex << (int)byte << " ";
                 }
+                oss << std::dec <<"Time: " << std::fixed << std::setprecision(9) << static_cast<double>(time_stamp.nanoseconds() - start_time_pub_[topic_name].nanoseconds()) / 1e9;
 
-                RCLCPP_INFO(this->get_logger(), "Topic: %s, Data: %s, Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
+                RCLCPP_INFO(this->get_logger(), "Publish/ Topic: %s, Data: %s, Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
 
                 // 該当トピックのPublisherでメッセージ送信
                 publishers_[topic_name]->publish(*message_);
@@ -119,9 +162,10 @@ class PubSub : public rclcpp::Node
             auto callback = [this, topic_name, options](const publisher_node::msg::IntMessage::SharedPtr message_) -> void
             {
                 // eval_time秒過ぎてたら受け取らず終了
-                auto now = this->get_clock()->now();
-                if((now.seconds() - start_time_sub_[topic_name].seconds()) >= options.eval_time) {
+                auto sub_time = this->get_clock()->now();
+                if((sub_time.seconds() - start_time_sub_[topic_name].seconds()) >= options.eval_time) {
                     RCLCPP_INFO(this->get_logger(), "Topic %s has reached the evaluation time.", topic_name.c_str());
+                    end_time_sub_[topic_name] = this->get_clock()->now();
                     return;
                 }
 
@@ -132,9 +176,9 @@ class PubSub : public rclcpp::Node
                     oss << std::hex << (int)byte << " ";
                 }
                 // subした時刻などを表示
-                oss << std::dec <<"Time: " << (now.seconds() - start_time_sub_[topic_name].seconds()) << "." << (now.nanoseconds() - start_time_sub_[topic_name].nanoseconds());
+                oss << std::dec <<"Time: " << std::fixed << std::setprecision(9) << static_cast<double>(sub_time.nanoseconds() - start_time_sub_[topic_name].nanoseconds()) / 1e9;
                 int current_pub_idx = message_->header.pub_idx;
-                RCLCPP_INFO(this->get_logger(), "Subscribed/ Topic: %s Data: %s Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
+                RCLCPP_INFO(this->get_logger(), "Subscribe/ Topic: %s Data: %s Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
             };
 
             // Subscriber作成
@@ -152,9 +196,10 @@ class PubSub : public rclcpp::Node
                     return;
                 }
 
-                auto now = this->get_clock()->now();
-                if((now.seconds() - start_time_sub_[topic_name].seconds()) >= options.eval_time) {
+                auto sub_time = this->get_clock()->now();
+                if((sub_time.seconds() - start_time_sub_[topic_name].seconds()) >= options.eval_time) {
                     RCLCPP_INFO(this->get_logger(), "Topic %s has reached the evaluation time.", topic_name.c_str());
+                    end_time_sub_[topic_name] = this->get_clock()->now();
                     return;
                 }
 
@@ -165,22 +210,30 @@ class PubSub : public rclcpp::Node
                     oss << std::hex << (int)byte << " ";
                 }
                 // subした時刻などを表示
-                oss << std::dec <<"Time: " << (now.seconds() - start_time_sub_[topic_name].seconds()) << "." << (now.nanoseconds() - start_time_sub_[topic_name].nanoseconds());
+                oss << std::dec <<"Time: " << std::fixed << std::setprecision(9) << static_cast<double>(sub_time.nanoseconds() - start_time_sub_[topic_name].nanoseconds()) / 1e9;
                 int current_pub_idx = message_->header.pub_idx;
-                RCLCPP_INFO(this->get_logger(), "Subscribed/ Topic: %s Data: %s Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
+                RCLCPP_INFO(this->get_logger(), "Subscribe/ Topic: %s Data: %s Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
 
                 // ヘッダのタイムスタンプを書き換え
-                message_->header.stamp.sec = static_cast<int32_t>(now.seconds() - start_time_sub_[topic_name].seconds());
-                message_->header.stamp.nanosec = static_cast<uint32_t>((now.nanoseconds() - start_time_sub_[topic_name].nanoseconds()) % 1000000000);
+                message_->header.stamp.sec = static_cast<int32_t>(sub_time.seconds() - start_time_sub_[topic_name].seconds());
+                message_->header.stamp.nanosec = static_cast<uint32_t>((sub_time.nanoseconds() - start_time_sub_[topic_name].nanoseconds()) % 1000000000);
                 message_->header.node_name = options.node_name;
 
                 // 同じトピックを扱うpublisherを起動
                 oss.str("");
                 oss.clear();
+                auto pub_time = this->get_clock()->now();
+                if((pub_time.seconds() - start_time_pub_[topic_name].seconds()) >= options.eval_time) {
+                    RCLCPP_INFO(this->get_logger(), "Topic %s has reached the evaluation time.", topic_name.c_str());
+                    end_time_pub_[topic_name] = this->get_clock()->now();
+                    return;
+                }
                 for (const auto& byte : message_->data)
                 {
                     oss << std::hex << (int)byte << " ";
                 }
+                // pubした時刻などを表示
+                oss << std::dec <<"Time: " << std::fixed << std::setprecision(9) << static_cast<double>(pub_time.nanoseconds() - start_time_pub_[topic_name].nanoseconds()) / 1e9;
                 RCLCPP_INFO(this->get_logger(), "Publish/ Topic: %s Data: %s Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
                 publishers_[topic_name]->publish(*message_);
             };
@@ -202,11 +255,14 @@ class PubSub : public rclcpp::Node
     std::unordered_map<std::string, rclcpp::TimerBase::SharedPtr> timers_;
     std::unordered_map<std::string, rclcpp::Time> start_time_pub_;
     std::unordered_map<std::string, rclcpp::Time> start_time_sub_;
+    std::unordered_map<std::string, rclcpp::Time> end_time_pub_;
+    std::unordered_map<std::string, rclcpp::Time> end_time_sub_;
 };
 
 int main(int argc, char * argv[])
 {
   auto options = parse_options(argc, argv);
+  create_result_directory(options) ;
   std::cout << options << "\n" << "Start Publisher & Subscriber!" << std::endl;
 
   // クライアントライブラリの初期化

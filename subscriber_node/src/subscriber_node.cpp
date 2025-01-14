@@ -3,7 +3,9 @@
 #include <string>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
-#include <std_msgs/msg/byte_multi_array.hpp>
+#include <sstream>
+#include <fstream>
+#include <filesystem>
 
 #include "node_options/cli_options.hpp"
 #include "publisher_node/msg/performance_header.hpp"
@@ -24,6 +26,37 @@ parse_options(int argc, char ** argv)
   return options;
 }
 
+static
+void
+create_result_directory(const node_options::Options & options)
+{
+  std::stringstream ss;
+  ss << options.node_name << "_log" ;
+  const std::string result_dir_name = ss.str();
+  std::filesystem::create_directories(result_dir_name); 
+  ss.str("");
+  ss.clear();
+
+  std::vector<std::string> log_file_paths;
+  for (size_t i = 0; i < options.topic_names.size(); ++i) {
+    ss << result_dir_name << "/" << options.topic_names[i] << "_log.txt";
+    std::string log_file_path = ss.str();
+    log_file_paths.push_back(log_file_path);
+    ss.str("");
+    ss.clear();
+  }
+
+  for (const auto& file_path : log_file_paths) {
+    std::ofstream ofs(file_path); // ファイルを開く（存在しない場合は作成）
+    if(ofs){
+      std::cout << "Log file created: " << file_path << std::endl;
+      ofs.close();
+    } else {
+      std::cerr << "Failed to create: " << file_path << std::endl;
+    }
+  }
+}
+
 class Subscriber : public rclcpp::Node
 {
 public:
@@ -37,9 +70,10 @@ public:
 
       auto callback = [this, topic_name, options](const publisher_node::msg::IntMessage::SharedPtr message_) -> void{
         // eval_time秒過ぎてたら受け取らず終了
-        auto now = this->get_clock()->now();
-        if((now.seconds() - start_time_[topic_name].seconds()) >= options.eval_time) {
+        auto sub_time = this->get_clock()->now();
+        if((sub_time.seconds() - start_time_[topic_name].seconds()) >= options.eval_time) {
           RCLCPP_INFO(this->get_logger(), "Topic %s has reached the evaluation time.", topic_name.c_str());
+          end_time_[topic_name] = this->get_clock()->now();
           return;
         }
 
@@ -50,9 +84,9 @@ public:
             oss << std::hex << (int)byte << " ";
         }
         // subした時刻などを表示
-        oss << std::dec <<"Time: " << (now.seconds() - start_time_[topic_name].seconds()) << "." << (now.nanoseconds() - start_time_[topic_name].nanoseconds());
+        oss << std::dec <<"Time: " << std::fixed << std::setprecision(9) << static_cast<double>(sub_time.nanoseconds() - start_time_[topic_name].nanoseconds()) / 1e9;
         int current_pub_idx = message_->header.pub_idx;
-        RCLCPP_INFO(this->get_logger(), "Subscribed/ Topic: %s Data: %s Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
+        RCLCPP_INFO(this->get_logger(), "Subscribe/ Topic: %s Data: %s Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
       };
         
       rclcpp::QoS qos(rclcpp::KeepLast(10));
@@ -67,11 +101,13 @@ private:
   // トピックごとのPublisher
   std::unordered_map<std::string, rclcpp::Subscription<publisher_node::msg::IntMessage>::SharedPtr> subscribers_;
   std::unordered_map<std::string, rclcpp::Time> start_time_;
+  std::unordered_map<std::string, rclcpp::Time> end_time_;
 };
 
 int main(int argc, char * argv[])
 {
   auto options = parse_options(argc, argv);
+  create_result_directory(options) ;
   std::cout << options << "\n" << "Start Subscriber!" << std::endl;
 
   setvbuf(stdout, NULL, _IONBF, BUFSIZ);
