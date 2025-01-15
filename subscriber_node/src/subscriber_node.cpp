@@ -70,17 +70,19 @@ public:
     : Node(options.node_name)
   {
     node_name = options.node_name;
+    create_metadata_file(options);
+    
     // 複数のトピック名を扱う場合
     for (size_t i = 0; i < options.topic_names.size(); ++i) {
       const std::string & topic_name = options.topic_names[i];
       start_time_[topic_name] = this->get_clock()->now();
+      end_time_[topic_name] = start_time_[topic_name] + rclcpp::Duration::from_seconds(options.eval_time) ;
 
       auto callback = [this, topic_name, options](const publisher_node::msg::IntMessage::SharedPtr message_) -> void{
         // eval_time秒過ぎてたら受け取らず終了
         auto sub_time = this->get_clock()->now();
         if((sub_time.seconds() - start_time_[topic_name].seconds()) >= options.eval_time) {
           RCLCPP_INFO(this->get_logger(), "Topic %s has reached the evaluation time.", topic_name.c_str());
-          end_time_[topic_name] = this->get_clock()->now();
           return;
         }
 
@@ -119,6 +121,51 @@ private:
   std::unordered_map<std::string, rclcpp::Time> start_time_;
   std::unordered_map<std::string, rclcpp::Time> end_time_;
 
+  void
+  create_metadata_file(const node_options::Options & options)
+  {
+    std::stringstream ss;
+    ss << options.node_name << "_log" <<  "/" << "metadata.txt" ;
+    std::string metadata_file_path = ss.str();
+    ss.str("");
+    ss.clear();
+
+    std::ofstream file(metadata_file_path, std::ios::out | std::ios::trunc);
+    if (!file.is_open()) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to open file: %s", metadata_file_path.c_str());
+        return;
+    }
+
+    
+    file << "Name: " << options.node_name << "\n";
+    file << "NodeType: " << "Subscriber" << "\n";
+    file << "Topics: ";
+    for (const std::string& topic_name : options.topic_names) {
+      file << topic_name << ",";
+    }
+
+    file.close();
+    RCLCPP_INFO(this->get_logger(), "Metadata written to file: %s", metadata_file_path.c_str());
+
+    // ファイルのコピー
+    try {
+      std::string original_path = metadata_file_path;
+      ss << "../../../../performance_test/logs/" << node_name << "_log" ;
+      std::string destination_dir = ss.str();
+      if (!std::filesystem::exists(destination_dir)) {
+        std::filesystem::create_directories(destination_dir);
+        std::cout << "Created directory: " << destination_dir << std::endl;
+      }
+
+      ss << "/" << "metadata.txt" ;
+      std::string destination_path = ss.str();
+      std::filesystem::copy_file(original_path, destination_path, std::filesystem::copy_options::overwrite_existing);
+      std::cout << "File copied from " << original_path << " to " << destination_path << std::endl;
+    } catch (const std::filesystem::filesystem_error &e) {
+        std::cerr << "Error copying file: " << e.what() << std::endl;
+    }
+  }
+
   // ログ記録用
   std::string node_name;
   std::map<std::string, std::vector<MessageLog>> message_logs_;
@@ -141,6 +188,10 @@ private:
             RCLCPP_ERROR(this->get_logger(), "Failed to open file: %s", log_file_path.c_str());
             return;
         }
+
+        // StartTimeとEndTimeを書き込む
+        file << "StartTime: " << start_time_[topic_name].nanoseconds() << "\n" ;
+        file << "EndTime: " << end_time_[topic_name].nanoseconds() << "\n" ;
 
         for (const auto& log : topic_logs) {
             file << "Pub Node_Name: " << log.pub_node_name << ", Index: " << log.message_idx << ", Timestamp: " << log.time_stamp.nanoseconds() << "\n";

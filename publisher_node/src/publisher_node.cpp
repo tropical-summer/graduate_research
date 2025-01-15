@@ -67,6 +67,7 @@ create_result_directory(const node_options::Options & options)
   }
 }
 
+
 class Publisher : public rclcpp::Node
 {
   public:
@@ -74,6 +75,7 @@ class Publisher : public rclcpp::Node
     : Node(options.node_name)
     {
       node_name = options.node_name;
+      create_metadata_file(options);
 
       // 複数のトピック名を扱う場合
       for (size_t i = 0; i < options.topic_names.size(); ++i) {
@@ -83,6 +85,7 @@ class Publisher : public rclcpp::Node
 
         pub_idx_[topic_name] = 0;
         start_time_[topic_name] = this->get_clock()->now();
+        end_time_[topic_name] = start_time_[topic_name] + rclcpp::Duration::from_seconds(options.eval_time) ;
 
         // タイマー実行されるイベントハンドラー関数を生成
         auto publish_message =
@@ -99,7 +102,6 @@ class Publisher : public rclcpp::Node
             if((time_stamp.seconds() - start_time_[topic_name].seconds()) >= options.eval_time) {
               RCLCPP_INFO(this->get_logger(), "Topic %s has reached the evaluation time.", topic_name.c_str());
               timers_[topic_name]->cancel();
-              end_time_[topic_name] = this->get_clock()->now();
               return;
             }
 
@@ -154,6 +156,61 @@ class Publisher : public rclcpp::Node
     std::unordered_map<std::string, rclcpp::Time> start_time_;
     std::unordered_map<std::string, rclcpp::Time> end_time_;
 
+    void
+    create_metadata_file(const node_options::Options & options)
+    {
+      std::stringstream ss;
+      ss << options.node_name << "_log" <<  "/" << "metadata.txt" ;
+      std::string metadata_file_path = ss.str();
+      ss.str("");
+      ss.clear();
+
+      std::ofstream file(metadata_file_path, std::ios::out | std::ios::trunc);
+      if (!file.is_open()) {
+          RCLCPP_ERROR(this->get_logger(), "Failed to open file: %s", metadata_file_path.c_str());
+          return;
+      }
+
+      file << "Name: " << options.node_name << "\n";
+      file << "NodeType: " << "Publisher" << "\n";
+      file << "Topics: ";
+      for (const std::string& topic_name : options.topic_names) {
+        file << topic_name << ",";
+      }
+      file << "\n";
+      file << "PayloadSize: ";
+      for (const int& payload_size : options.payload_size) {
+        file << payload_size << ",";
+      }
+      file << "\n";
+      file << "Period: ";
+      for (const int& period_ms : options.period_ms) {
+        file << period_ms << ",";
+      }
+      file << "\n";
+
+      file.close();
+      RCLCPP_INFO(this->get_logger(), "Metadata written to file: %s", metadata_file_path.c_str());
+
+      // ファイルのコピー
+      try {
+        std::string original_path = metadata_file_path;
+        ss << "../../../../performance_test/logs/" << node_name << "_log" ;
+        std::string destination_dir = ss.str();
+        if (!std::filesystem::exists(destination_dir)) {
+          std::filesystem::create_directories(destination_dir);
+          std::cout << "Created directory: " << destination_dir << std::endl;
+        }
+
+        ss << "/" << "metadata.txt" ;
+        std::string destination_path = ss.str();
+        std::filesystem::copy_file(original_path, destination_path, std::filesystem::copy_options::overwrite_existing);
+        std::cout << "File copied from " << original_path << " to " << destination_path << std::endl;
+      } catch (const std::filesystem::filesystem_error &e) {
+          std::cerr << "Error copying file: " << e.what() << std::endl;
+      }
+    }
+
     // ログ記録用
     std::string node_name;
     std::map<std::string, std::vector<MessageLog>> message_logs_;
@@ -176,6 +233,10 @@ class Publisher : public rclcpp::Node
             RCLCPP_ERROR(this->get_logger(), "Failed to open file: %s", log_file_path.c_str());
             return;
         }
+
+        // StartTimeとEndTimeを書き込む
+        file << "StartTime: " << start_time_[topic_name].nanoseconds() << "\n" ;
+        file << "EndTime: " << end_time_[topic_name].nanoseconds() << "\n" ;
 
         for (const auto& log : topic_logs) {
             file << "Index: " << log.message_idx << ", Timestamp: " << log.time_stamp.nanoseconds() << "\n";
