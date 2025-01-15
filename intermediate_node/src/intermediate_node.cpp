@@ -13,6 +13,12 @@
 #include "publisher_node/msg/performance_header.hpp"
 #include "publisher_node/msg/int_message.hpp"
 
+struct MessageLog {
+  std::string pub_node_name;
+  uint32_t message_idx;
+  rclcpp::Time time_stamp;
+};
+
 // コマンドラインオプション
 static
 node_options::Options
@@ -67,12 +73,14 @@ create_result_directory(const node_options::Options & options)
   }
 }
 
-class PubSub : public rclcpp::Node
+class Intermediate : public rclcpp::Node
 {
   public:
-    explicit PubSub(const node_options::Options & options)
+    explicit Intermediate(const node_options::Options & options)
     : Node(options.node_name)
     {
+      node_name = options.node_name;
+
       // まずはPub
     for (size_t i = 0; i < options.topic_names_pub.size(); ++i) {
         const std::string & topic_name = options.topic_names_pub[i];
@@ -112,6 +120,7 @@ class PubSub : public rclcpp::Node
                 message_->header.stamp.nanosec = static_cast<uint32_t>((time_stamp.nanoseconds() - start_time_pub_[topic_name].nanoseconds()) % 1000000000);
                 message_->header.pub_idx = current_pub_idx;
                 message_->header.node_name = options.node_name;
+                record_log_pub_(topic_name, node_name, current_pub_idx, time_stamp);
 
                 // message->dataを16進数形式で表示 (0埋めはしない)
                 std::ostringstream oss;
@@ -178,7 +187,9 @@ class PubSub : public rclcpp::Node
                 // subした時刻などを表示
                 oss << std::dec <<"Time: " << std::fixed << std::setprecision(9) << static_cast<double>(sub_time.nanoseconds() - start_time_sub_[topic_name].nanoseconds()) / 1e9;
                 int current_pub_idx = message_->header.pub_idx;
+                std::string pub_node_name = message_->header.node_name;
                 RCLCPP_INFO(this->get_logger(), "Subscribe/ Topic: %s Data: %s Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
+                record_log_sub_(topic_name, pub_node_name, current_pub_idx, sub_time);
             };
 
             // Subscriber作成
@@ -212,7 +223,9 @@ class PubSub : public rclcpp::Node
                 // subした時刻などを表示
                 oss << std::dec <<"Time: " << std::fixed << std::setprecision(9) << static_cast<double>(sub_time.nanoseconds() - start_time_sub_[topic_name].nanoseconds()) / 1e9;
                 int current_pub_idx = message_->header.pub_idx;
+                std::string pub_node_name = message_->header.node_name;
                 RCLCPP_INFO(this->get_logger(), "Subscribe/ Topic: %s Data: %s Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
+                record_log_sub_(topic_name, pub_node_name, current_pub_idx, sub_time);
 
                 // ヘッダのタイムスタンプを書き換え
                 message_->header.stamp.sec = static_cast<int32_t>(sub_time.seconds() - start_time_sub_[topic_name].seconds());
@@ -235,6 +248,7 @@ class PubSub : public rclcpp::Node
                 // pubした時刻などを表示
                 oss << std::dec <<"Time: " << std::fixed << std::setprecision(9) << static_cast<double>(pub_time.nanoseconds() - start_time_pub_[topic_name].nanoseconds()) / 1e9;
                 RCLCPP_INFO(this->get_logger(), "Publish/ Topic: %s Data: %s Index: %d", topic_name.c_str(), oss.str().c_str(), current_pub_idx);
+                record_log_pub_(topic_name, pub_node_name, current_pub_idx, pub_time);
                 publishers_[topic_name]->publish(*message_);
             };
 
@@ -246,6 +260,11 @@ class PubSub : public rclcpp::Node
 
     }
 
+    ~Intermediate() override {
+      RCLCPP_INFO(this->get_logger(), "Node is shutting down.");
+      write_all_logs_pub_(message_logs_pub_);
+      write_all_logs_sub_(message_logs_sub_);
+    }
 
   private:
     std::unordered_map<std::string, rclcpp::Publisher<publisher_node::msg::IntMessage>::SharedPtr> publishers_;
@@ -257,6 +276,103 @@ class PubSub : public rclcpp::Node
     std::unordered_map<std::string, rclcpp::Time> start_time_sub_;
     std::unordered_map<std::string, rclcpp::Time> end_time_pub_;
     std::unordered_map<std::string, rclcpp::Time> end_time_sub_;
+
+    // ログ記録用
+    std::string node_name;
+    std::map<std::string, std::vector<MessageLog>> message_logs_pub_;
+    std::map<std::string, std::vector<MessageLog>> message_logs_sub_;
+
+    void record_log_pub_(const std::string& topic_name, const std::string& pub_node_name, const uint32_t& message_idx, const rclcpp::Time& time_stamp) {
+      MessageLog log = {pub_node_name, message_idx, time_stamp};
+      message_logs_pub_[topic_name].emplace_back(log);
+    }
+    void record_log_sub_(const std::string& topic_name, const std::string& pub_node_name, const uint32_t& message_idx, const rclcpp::Time& time_stamp) {
+      MessageLog log = {pub_node_name, message_idx, time_stamp};
+      message_logs_sub_[topic_name].emplace_back(log);
+    }
+
+    void write_all_logs_pub_(const std::map<std::string, std::vector<MessageLog>>& message_logs_pub_) {
+      // publisherたちの書き込み
+      for (const auto &[topic_name, topic_logs] : message_logs_pub_) {
+        std::stringstream ss;
+        ss << node_name << "_log" <<  "/" << topic_name << "_pub" << "_log.txt" ;
+        const std::string log_file_path = ss.str();
+        ss.str("");
+        ss.clear();
+
+        std::ofstream file(log_file_path, std::ios::out | std::ios::trunc);
+        if (!file.is_open()) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to open file: %s", log_file_path.c_str());
+            return;
+        }
+
+        for (const auto& log : topic_logs) {
+            file << "Pub Node_Name: " << log.pub_node_name << ", Index: " << log.message_idx << ", Timestamp: " << log.time_stamp.nanoseconds() << "\n";
+        }
+
+        file.close();
+        RCLCPP_INFO(this->get_logger(), "MessageLogs written to file: %s", log_file_path.c_str());
+
+        // ファイルのコピー
+        try {
+          std::string original_path = log_file_path;
+          ss << "../../../../performance_test/logs/" << node_name << "_log" ;
+          std::string destination_dir = ss.str();
+          if (!std::filesystem::exists(destination_dir)) {
+            std::filesystem::create_directories(destination_dir);
+            std::cout << "Created directory: " << destination_dir << std::endl;
+          }
+
+          ss << "/" << topic_name << "_pub" << "_log.txt" ;
+          std::string destination_path = ss.str();
+          std::filesystem::copy_file(original_path, destination_path, std::filesystem::copy_options::overwrite_existing);
+          std::cout << "File copied from " << original_path << " to " << destination_path << std::endl;
+        } catch (const std::filesystem::filesystem_error &e) {
+            std::cerr << "Error copying file: " << e.what() << std::endl;
+        }
+      }
+    }
+    void write_all_logs_sub_(const std::map<std::string, std::vector<MessageLog>>& message_logs_sub_) {
+      // subscriberたちの書き込み
+      for (const auto &[topic_name, topic_logs] : message_logs_sub_) {
+        std::stringstream ss;
+        ss << node_name << "_log" <<  "/" << topic_name << "_sub" << "_log.txt" ;
+        const std::string log_file_path = ss.str();
+        ss.str("");
+        ss.clear();
+
+        std::ofstream file(log_file_path, std::ios::out | std::ios::trunc);
+        if (!file.is_open()) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to open file: %s", log_file_path.c_str());
+            return;
+        }
+
+        for (const auto& log : topic_logs) {
+            file << "Pub Node_Name: " << log.pub_node_name << ", Index: " << log.message_idx << ", Timestamp: " << log.time_stamp.nanoseconds() << "\n";
+        }
+
+        file.close();
+        RCLCPP_INFO(this->get_logger(), "MessageLogs written to file: %s", log_file_path.c_str());
+
+        // ファイルのコピー
+        try {
+          std::string original_path = log_file_path;
+          ss << "../../../../performance_test/logs/" << node_name << "_log" ;
+          std::string destination_dir = ss.str();
+          if (!std::filesystem::exists(destination_dir)) {
+            std::filesystem::create_directories(destination_dir);
+            std::cout << "Created directory: " << destination_dir << std::endl;
+          }
+
+          ss << "/" << topic_name << "_sub" << "_log.txt" ;
+          std::string destination_path = ss.str();
+          std::filesystem::copy_file(original_path, destination_path, std::filesystem::copy_options::overwrite_existing);
+          std::cout << "File copied from " << original_path << " to " << destination_path << std::endl;
+        } catch (const std::filesystem::filesystem_error &e) {
+            std::cerr << "Error copying file: " << e.what() << std::endl;
+        }
+      }
+    }
 };
 
 int main(int argc, char * argv[])
@@ -270,7 +386,7 @@ int main(int argc, char * argv[])
   rclcpp::init(argc, argv);
 
   // Publisherノードの生成とスピン開始
-  auto node = std::make_shared<PubSub>(options);
+  auto node = std::make_shared<Intermediate>(options);
   rclcpp::spin(node);
   rclcpp::shutdown();
 
