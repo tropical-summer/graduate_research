@@ -10,6 +10,7 @@
 #include <sstream>
 #include <fstream>
 #include <filesystem>
+#include <cstdlib>
 
 #include "node_options/cli_options.hpp"
 #include "publisher_node/msg/performance_header.hpp"
@@ -142,6 +143,15 @@ class Publisher : public rclcpp::Node
     ~Publisher() override {
       RCLCPP_INFO(this->get_logger(), "Node is shutting down.");
       write_all_logs(message_logs_);
+
+      // このノードをコンテナ内で実行している場合、コンテナ外にlogsをコピーする必要がある
+      for (const auto &[topic_name, publishers] : publishers_) {
+        std::stringstream ss;
+        ss << ":" << node_name << "_log/" << topic_name << "_log.txt" ;
+        std::string log_file_path = ss.str();
+        std::string destination_path;
+        std::string copy_commnad = "docker cp " + get_container_id() + log_file_path + destination_path; 
+      }
     }
 
 
@@ -245,7 +255,7 @@ class Publisher : public rclcpp::Node
         file.close();
         RCLCPP_INFO(this->get_logger(), "MessageLogs written to file: %s", log_file_path.c_str());
 
-        // ファイルのコピー
+        // ファイルのコピー (ローカルで実行するとき用)
         try {
           std::string original_path = log_file_path;
           ss << "../../../../performance_test/logs/" << node_name << "_log" ;
@@ -264,7 +274,19 @@ class Publisher : public rclcpp::Node
         }
       }
     }
+
+    std::string
+    get_container_id() {
+      return "a";
+    }
 };
+
+void sigint_handler (int signum)
+{
+  // シグナルを受け取ったときにrclcpp::shutdown()を呼ぶ。Dockerコンテナ用
+  rclcpp::shutdown();
+  exit(0);
+}
 
 int main(int argc, char * argv[])
 {
@@ -275,6 +297,9 @@ int main(int argc, char * argv[])
   // クライアントライブラリの初期化
   setvbuf(stdout, NULL, _IONBF, BUFSIZ);
   rclcpp::init(argc, argv);
+
+  std::signal(SIGINT, sigint_handler);
+  std::signal(SIGTERM, sigint_handler);
 
   // Publisherノードの生成とスピン開始
   auto node = std::make_shared<Publisher>(options);
