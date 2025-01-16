@@ -78,6 +78,9 @@ class Publisher : public rclcpp::Node
       node_name = options.node_name;
       create_metadata_file(options);
 
+      // シャットダウン予告
+      RCLCPP_INFO(this->get_logger(), "Shutdown timer created with duration %d seconds", options.eval_time + 10);
+
       // 複数のトピック名を扱う場合
       for (size_t i = 0; i < options.topic_names.size(); ++i) {
         const std::string & topic_name = options.topic_names[i];
@@ -137,6 +140,17 @@ class Publisher : public rclcpp::Node
         // Timer作成
         auto timer = create_wall_timer(std::chrono::milliseconds(period_ms), publish_message);
         timers_.emplace(topic_name, timer);
+
+        // shutdownタイマー
+        auto shutdown_node = 
+          [this, &options]() -> void
+          {
+            RCLCPP_INFO(this->get_logger(), "Shutting down node...");
+            rclcpp::shutdown();
+        };
+
+        auto shutdown_timer = create_wall_timer(std::chrono::seconds(options.eval_time + 10), shutdown_node);
+        shutdown_timers_.emplace(topic_name, shutdown_timer);
       }
     }
 
@@ -161,6 +175,7 @@ class Publisher : public rclcpp::Node
 
     // タイマーを保持
     std::unordered_map<std::string, rclcpp::TimerBase::SharedPtr> timers_;
+    std::unordered_map<std::string, rclcpp::TimerBase::SharedPtr> shutdown_timers_;
 
     std::unordered_map<std::string, uint32_t> pub_idx_;
     std::unordered_map<std::string, rclcpp::Time> start_time_;
