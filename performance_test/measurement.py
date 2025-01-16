@@ -32,9 +32,9 @@ def check_connect(args):
             if line.startswith("NodeType:"):
                 pub_node_type = line.split(":", 1)[1].strip().split(",")[0] # ”Publisher", "Intermediate" など
             if line.startswith("PayloadSize:"):
-                pub_payload_size = line.split(":", 1)[1].strip().split(",")[0] 
+                pub_payload_size_list = line.split(":", 1)[1].strip().split(",")
             if line.startswith("Period:"):
-                pub_period_ms = line.split(":", 1)[1].strip().split(",")[0] 
+                pub_period_ms_list = line.split(":", 1)[1].strip().split(",")
 
         if(pub_node_type == "Publisher"):
             for line in lines:
@@ -47,6 +47,12 @@ def check_connect(args):
                     topics = line.split(":", 1)[1].strip().split(",")
 
         pub_topic_list = [topic for topic in topics if topic]
+
+        # pubのpayload_sizeとperiod_msをトピック名と結びつける
+        pub_option_list = []
+        for topic, payload_size, period_ms in zip(pub_topic_list, pub_payload_size_list, pub_period_ms_list):
+            pub_option_list.append((topic, payload_size, period_ms))
+
 
     with open(sub_metadata_path, "r") as f:
         lines = f.readlines()
@@ -73,14 +79,23 @@ def check_connect(args):
     else:
         raise ValueError("Connection failed")
     
+    
     pub_info = {}
-    sub_info = {}
     pub_info["name"] = pub_node_name
     pub_info["type"] = pub_node_type
-    pub_info["payload_size"] = pub_payload_size
-    pub_info["period_ms"] = pub_period_ms
+    sub_info = {}
     sub_info["name"] = sub_node_name
     sub_info["type"] = sub_node_type
+
+    for (topic, payload_size, period_ms) in pub_option_list:
+        if topic in common_topics:
+            pub_info[f"{topic}"] = {}
+            pub_info[f"{topic}"]["payload_size"] = payload_size
+            pub_info[f"{topic}"]["period_ms"] = period_ms
+
+    for topic in sub_topic_list:
+        if topic in common_topics:
+            sub_info[f"{topic}"] = {}
 
     print(pub_info)
     print(sub_info)
@@ -192,24 +207,35 @@ def get_logdata(pub_info, sub_info, topic_list):
             
     return pub_logdata, sub_logdata
 
-# Pubのタイムスタンプ一覧とSubのタイムスタンプ一覧を受け取り、その差の様々な統計データを算出し、resultsフォルダにtxtとして出力
+# Pubのタイムスタンプ一覧とSubのタイムスタンプ一覧を受け取り、その差の様々な統計データを算出し、latency_resultsフォルダにtxtとして出力
 def measure_latency(pub_logdata, sub_logdata, topic_list):
-    latency_results = {}
+    latency_results_for_all_topics = {} # (index, latency)のペア
+    loss_results_for_all_topics = {} # loss[%]
+    latency_statics_for_all_topics = {} # latencyの統計データ
 
-    # resultsディレクトリに延々と追記されないように毎回リセット
-    try:
-        shutil.rmtree("results")
-        print(f"delete directory: results/")
-    except FileNotFoundError:
-        print(f"指定されたディレクトリが存在しません: results")
-    except PermissionError:
-        print(f"ディレクトリの削除に失敗しました（権限不足）: results")
+    def calcurate_statics(latency_results_for_all_topics, topic):
+        latency_list = []
+        for index, latency in latency_results_for_all_topics[f"{topic}"]:
+            latency_list.append(latency)
+
+        max_latency = max(latency_list)
+        min_latency = min(latency_list)
+        count_messages = len(latency_list)
+        sum_latency = sum(latency_list)
+        ave_latency = round(sum_latency / count_messages, 6)  
+
+        latency_statics = {}
+        latency_statics["max"] = max_latency
+        latency_statics["min"] = min_latency
+        latency_statics["count"] = count_messages
+        latency_statics["sum"] = sum_latency
+        latency_statics["average"] = ave_latency
+
+        return latency_statics
     
     os.makedirs("results", exist_ok=True)
 
     for topic in topic_list:
-        latency_results[f"{topic}"] = []
-
         pub_start_time = next(item[1] for item in pub_logdata[f"{topic}"] if item[0] == "StartTime")
         pub_end_time = next(item[1] for item in pub_logdata[f"{topic}"] if item[0] == "EndTime")
         sub_start_time = next(item[1] for item in sub_logdata[f"{topic}"] if item[0] == "StartTime")
@@ -225,35 +251,72 @@ def measure_latency(pub_logdata, sub_logdata, topic_list):
         # Start~Endの共通集合に入らないindexを除く
         pub_indices = {item[0] for item in pub_logdata[f"{topic}"] if int(item[1]) >= common_start_time and int(item[1]) <= common_end_time}
         sub_indices = {item[0] for item in sub_logdata[f"{topic}"] if int(item[1]) >= common_start_time and int(item[1]) <= common_end_time}
-        print(pub_indices)
-        print(sub_indices)
 
         # その上で片方にしか入っていないindexをlossとしてloss率を計算
         los_index_count = len(set(pub_indices) - set(sub_indices)) + len(set(pub_indices) - set(sub_indices))
-        print(los_index_count)
-        common_indices = pub_indices.intersection(sub_indices)
-        los_index_rate = los_index_count / (len(common_indices) + los_index_count)
 
+        common_indices = pub_indices.intersection(sub_indices)
+        loss_index_rate = los_index_count / (len(common_indices) + los_index_count)
+        loss_results_for_all_topics[f"{topic}"] = loss_index_rate
+
+        latency_results = []
         for index in common_indices:
             timestamp_pub = next(timestamp for idx, timestamp in pub_logdata[f"{topic}"] if idx == index)
             timestamp_sub = next(timestamp for idx, timestamp in sub_logdata[f"{topic}"] if idx == index)
 
-            latency_results[f"{topic}"].append((index, (timestamp_sub - timestamp_pub)/ 1_000_000))
+            latency_results.append((index, (timestamp_sub - timestamp_pub)/ 1_000_000))
 
-        with open("results/latency_results.txt", "a") as f:
+        latency_results_for_all_topics[f"{topic}"] = latency_results
+
+        # 統計情報を計算
+        latency_statics = calcurate_statics(latency_results_for_all_topics, topic)
+        latency_statics_for_all_topics[f"{topic}"] = latency_statics
+
+    with open("results/latency_results.txt", "w") as f:
+        for topic in topic_list:
+            loss_index_rate = loss_results_for_all_topics[f"{topic}"]
+            latency_results = latency_results_for_all_topics[f"{topic}"]
+            latency_statics = latency_statics_for_all_topics[f"{topic}"]
+
             f.write(f"topic: {topic}\n")
-            f.write(f"loss: {los_index_rate}[%]\n")
-            for index, latency in latency_results[f"{topic}"]:
+            f.write(f"loss: {loss_index_rate}[%]\n")
+            f.write(f"min: {latency_statics["min"]}ms\n")
+            f.write(f"max: {latency_statics["max"]}ms\n")
+            f.write(f"average: {latency_statics["average"]}ms\n")
+
+            for index, latency in latency_results:
                 f.write(f"Index: {index}, Latency: {latency}ms\n")
 
     print("complete caluculating latency!")
-    return latency_results
 
-def measure_throughput(pub_logdata, sub_logdata, topic_list):
-    return
+    return latency_statics_for_all_topics
+
+def measure_throughput(pub_info, latency_statics_for_all_topics, topic_list):
+    throughput_results_for_all_topics = {}
+
+    for topic in topic_list:
+        payload_size = pub_info[f"{topic}"]["payload_size"]
+        payload_size_bit = int(payload_size) * 8 # bitに直す
+        latency_statics = latency_statics_for_all_topics[f"{topic}"]
+        sum_latency = latency_statics["sum"] * 0.001 # msをsに変換
+        print(sum_latency)
+        count_messages = latency_statics["count"]
+        print(count_messages)
+
+        throughput_results_for_all_topics[f"{topic}"] = round((payload_size_bit * count_messages) / sum_latency, 3)
+
+    with open("results/throuput_results.txt", "w") as f:
+        for topic in topic_list:
+            f.write(f"topic: {topic}\n")
+            f.write(f"Throughput: {throughput_results_for_all_topics[f"{topic}"]}bps\n")
+
+    print("complete caluculating throughput!")
+
+    return throughput_results_for_all_topics
 
 if __name__ == "__main__":
     args = sys.argv
     pub_info, sub_info, common_topics = check_connect(args)
     pub_logdata, sub_logdata = get_logdata(pub_info, sub_info, common_topics)
-    latency_results = measure_latency(pub_logdata, sub_logdata, common_topics)
+    latency_statics_for_all_topics = measure_latency(pub_logdata, sub_logdata, common_topics)
+    throughput_results_for_all_topics = measure_throughput(pub_info, latency_statics_for_all_topics, common_topics)
