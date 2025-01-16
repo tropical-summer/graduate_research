@@ -9,7 +9,7 @@ import os
 import textwrap
 
 # コマンドラインからJSONファイルのパスを受け取り、そのJSONファイルを取得する
-# < (args) -> json > 
+#  (args) -> json 
 def load_json_file(args):
     file_path = args[1] # args[0]には実行ファイル名、args[1]にコマンドライン引数が来る
     with open(file_path, "r") as f:
@@ -19,7 +19,7 @@ def load_json_file(args):
 
 
 # JSONファイルを受けとり、各ホストに対応するDockerfileを生成する.生成したDockerfileの数だけディレクトリを作り、Dockerfileはその下に置く
-# < json -> list[Dockerfile]の生成 >
+#  json -> list[Dockerfile]の生成 
 def generate_dockerfiles(json_content):
     output_dir = "../Dockerfiles"
     os.makedirs(output_dir, exist_ok=True)
@@ -41,38 +41,66 @@ def generate_dockerfiles(json_content):
             # 最初だけはコマンドの先頭に & をつけない
             if index == 0:
                 if node.get("publisher"):
-                    topic_name = node["publisher"][0]["topic_name"]
-                    payload_size = node["publisher"][0]["payload_size"]
-                    period_ms = node["publisher"][0]["period_ms"]
+                    publisher_list = node["publisher"]
+                    topic_names = ",".join(publisher["topic_name"] for publisher in publisher_list)
+                    payload_sizes = ",".join(str(publisher["payload_size"]) for publisher in publisher_list)
+                    period_ms = ",".join(str(publisher["period_ms"]) for publisher in publisher_list)
 
-                    additional_command = f". /root/performance_ws/src/graduate_research/install/setup.sh && cd /root/performance_ws/src/graduate_research/install/publisher_node/lib/publisher_node && ./publisher_node --node_name {node_name} --topic_name {topic_name} -s {payload_size} -p {period_ms}"
+                    additional_command = f". /root/performance_ws/src/graduate_research/install/setup.sh && cd /root/performance_ws/src/graduate_research/install/publisher_node/lib/publisher_node && ./publisher_node_exe --node_name {node_name} --topic_names {topic_names} -s {payload_sizes} -p {period_ms}"
                     base_command += additional_command
 
                 if node.get("subscriber"):
-                    topic_name = node["subscriber"][0]["topic_name"]
+                    subscriber_list = node["subscriber"]
+                    topic_names = ",".join(subscriber["topic_name"] for subscriber in subscriber_list)
 
-                    additional_command =f". /root/performance_ws/src/graduate_research/install/setup.sh && cd /root/performance_ws/src/graduate_research/install/subscriber_node/lib/subscriber_node && ./subscriber_node --node_name {node_name} --topic_name {topic_name}"
+                    additional_command =f". /root/performance_ws/src/graduate_research/install/setup.sh && cd /root/performance_ws/src/graduate_research/install/subscriber_node/lib/subscriber_node && ./subscriber_node --node_name {node_name} --topic_names {topic_names}"
+                    base_command += additional_command
+
+                if node.get("intermediate"):
+                    publisher_list = node["intermediate"][0]["publisher"]
+                    subscriber_list = node["intermediate"][0]["subscriber"]
+
+                    topic_names_pub = ",".join(publisher["topic_name"] for publisher in publisher_list)
+                    payload_sizes = ",".join(str(publisher["payload_size"]) for publisher in publisher_list)
+                    period_ms = ",".join(str(publisher["period_ms"]) for publisher in publisher_list)
+                    topic_names_sub = ",".join(subscriber["topic_name"] for subscriber in subscriber_list)
+
+                    additional_command =f". /root/performance_ws/src/graduate_research/install/setup.sh && cd /root/performance_ws/src/graduate_research/install/intermediate_node/lib/intermediate_node && ./intermediate_node --node_name {node_name} --topic_names_pub {topic_names_pub} --topic_names_sub {topic_names_sub} -s {payload_sizes} -p {period_ms}"
                     base_command += additional_command
 
                 continue
 
             # 複数のノードをバックグラウンドで同時に起動するため、通常は & で結ぶ
             if node.get("publisher"):
-                topic_name = node["publisher"][0]["topic_name"]
-                payload_size = node["publisher"][0]["payload_size"]
-                period_ms = node["publisher"][0]["period_ms"]
+                publisher_list = node["publisher"]
+                topic_names = ",".join(publisher["topic_name"] for publisher in publisher_list)
+                payload_sizes = ",".join(str(publisher["payload_size"]) for publisher in publisher_list)
+                period_ms = ",".join(str(publisher["period_ms"]) for publisher in publisher_list)
 
-                additional_command = f" & . /root/performance_ws/src/graduate_research/install/setup.sh && cd /root/performance_ws/src/graduate_research/install/publisher_node/lib/publisher_node && ./publisher_node --node_name {node_name} --topic_name {topic_name} -s {payload_size} -p {period_ms}"
+                additional_command = f" & . /root/performance_ws/src/graduate_research/install/setup.sh && cd /root/performance_ws/src/graduate_research/install/publisher_node/lib/publisher_node && ./publisher_node_exe --node_name {node_name} --topic_names {topic_names} -s {payload_sizes} -p {period_ms}"
                 base_command += additional_command
 
             if node.get("subscriber"):
-                topic_name = node["subscriber"][0]["topic_name"]
+                subscriber_list = node["subscriber"]
+                topic_names = ",".join(subscriber["topic_name"] for subscriber in subscriber_list)
 
-                additional_command =f" & . /root/performance_ws/src/graduate_research/install/setup.sh && cd /root/performance_ws/src/graduate_research/install/subscriber_node/lib/subscriber_node && ./subscriber_node --node_name {node_name} --topic_name {topic_name}"
+                additional_command =f" & . /root/performance_ws/src/graduate_research/install/setup.sh && cd /root/performance_ws/src/graduate_research/install/subscriber_node/lib/subscriber_node && ./subscriber_node --node_name {node_name} --topic_names {topic_names}"
+                base_command += additional_command
+
+            if node.get("intermediate"):
+                publisher_list = node["intermediate"][0]["publisher"]
+                subscriber_list = node["intermediate"][0]["subscriber"]
+
+                topic_names_pub = ",".join(publisher["topic_name"] for publisher in publisher_list)
+                payload_sizes = ",".join(str(publisher["payload_size"]) for publisher in publisher_list)
+                period_ms = ",".join(str(publisher["period_ms"]) for publisher in publisher_list)
+                topic_names_sub = ",".join(subscriber["topic_name"] for subscriber in subscriber_list)
+
+                additional_command =f" & . /root/performance_ws/src/graduate_research/install/setup.sh && cd /root/performance_ws/src/graduate_research/install/intermediate_node/lib/intermediate_node && ./intermediate_node --node_name {node_name} --topic_names_pub {topic_names_pub} --topic_names_sub {topic_names_sub} -s {payload_sizes} -p {period_ms}"
                 base_command += additional_command
 
             # コマンドの最後には wait 命令をつける
-            if index == len(nodes)-1:
+            if index == len(nodes) - 1:
                 additional_command = " & wait"
                 base_command += additional_command
 
@@ -93,13 +121,9 @@ def generate_dockerfiles(json_content):
     return 
 
 # JSONファイルを受け取り、ホストの数だけ生成したDockerfileをまとめて起動するdocker-compose.ymlをルートディレクトリに生成する
-# < json -> docker-compose.ymlの生成 >
+#  json -> docker-compose.ymlの生成 
 def generate_docker_compose(json_content):
-    docker_compose_content = textwrap.dedent(f"""
-    version: '3'
-    services:
-    """
-    )
+    docker_compose_content = textwrap.dedent("services:")
 
     hosts = json_content["hosts"]
     for index, host_dict in enumerate(hosts):
@@ -119,7 +143,7 @@ def generate_docker_compose(json_content):
 
         docker_compose_content += additional_content
 
-    docker_compose_file_path = "../docker-compose.yml"
+    docker_compose_file_path = "../compose.yml"
     with open(docker_compose_file_path, "w") as docker_compose_file:
         docker_compose_file.write(docker_compose_content)
 
