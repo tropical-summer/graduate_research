@@ -3,7 +3,7 @@ install/
 log/
 
 .vscode/
-docker-compose.yml
+compose.yml
 Dockerfiles/
 performance_test/logs/
 performance_test/results/
