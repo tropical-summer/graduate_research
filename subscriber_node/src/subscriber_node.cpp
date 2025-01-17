@@ -107,19 +107,32 @@ public:
       // Subscriber作成
       auto subscriber = create_subscription<publisher_node::msg::IntMessage>(topic_name, qos, callback);
       subscribers_.emplace(topic_name, subscriber);
+
+      // shutdownタイマー
+      auto shutdown_node = 
+        [this, &options]() -> void
+        {
+          RCLCPP_INFO(this->get_logger(), "Shutting down node...");
+          rclcpp::shutdown();
+      };
+
+      auto shutdown_timer = create_wall_timer(std::chrono::seconds(options.eval_time + 10), shutdown_node);
+      shutdown_timers_.emplace(topic_name, shutdown_timer);
     }
   }
 
   ~Subscriber() override {
       RCLCPP_INFO(this->get_logger(), "Node is shutting down.");
       write_all_logs(message_logs_);
-    }
+  }
 
 private:
   // トピックごとのPublisher
   std::unordered_map<std::string, rclcpp::Subscription<publisher_node::msg::IntMessage>::SharedPtr> subscribers_;
   std::unordered_map<std::string, rclcpp::Time> start_time_;
   std::unordered_map<std::string, rclcpp::Time> end_time_;
+
+  std::unordered_map<std::string, rclcpp::TimerBase::SharedPtr> shutdown_timers_;
 
   void
   create_metadata_file(const node_options::Options & options)
