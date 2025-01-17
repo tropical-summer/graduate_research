@@ -135,6 +135,8 @@ def generate_docker_compose(json_content):
             build:
               context: Dockerfiles/{host_name}
               dockerfile: Dockerfile
+            volumes:
+              - ${{PWD}}/performance_test/logs:/root/performance_ws/src/graduate_research/performance_test/logs_local
             container_name: {host_name}
         """
         )
