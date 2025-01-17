@@ -145,6 +145,17 @@ class Intermediate : public rclcpp::Node
             // Timer作成
             auto timer = create_wall_timer(std::chrono::milliseconds(period_ms), publish_message);
             timers_.emplace(topic_name, timer);
+
+            // shutdownタイマー
+            auto shutdown_node = 
+              [this, &options]() -> void
+              {
+                RCLCPP_INFO(this->get_logger(), "Shutting down node...");
+                rclcpp::shutdown();
+            };
+
+            auto shutdown_timer = create_wall_timer(std::chrono::seconds(options.eval_time + 10), shutdown_node);
+            shutdown_timers_.emplace(topic_name, shutdown_timer);
         }
 
         // 兼任なら、timerでのpubはせずsubからのcallbackを待つ
@@ -152,6 +163,17 @@ class Intermediate : public rclcpp::Node
             // Publisher作成
             auto publisher = create_publisher<publisher_node::msg::IntMessage>(topic_name, qos);
             publishers_.emplace(topic_name, publisher);
+
+            // shutdownタイマー
+            auto shutdown_node = 
+              [this, &options]() -> void
+              {
+                RCLCPP_INFO(this->get_logger(), "Shutting down node...");
+                rclcpp::shutdown();
+            };
+
+            auto shutdown_timer = create_wall_timer(std::chrono::seconds(options.eval_time + 10), shutdown_node);
+            shutdown_timers_.emplace(topic_name, shutdown_timer);
         }
 
     }
@@ -196,6 +218,17 @@ class Intermediate : public rclcpp::Node
             // Subscriber作成
             auto subscriber = create_subscription<publisher_node::msg::IntMessage>(topic_name, qos, callback);
             subscribers_.emplace(topic_name, subscriber);
+
+            // shutdownタイマー
+            auto shutdown_node = 
+              [this, &options]() -> void
+              {
+                RCLCPP_INFO(this->get_logger(), "Shutting down node...");
+                rclcpp::shutdown();
+              };
+
+              auto shutdown_timer = create_wall_timer(std::chrono::seconds(options.eval_time + 10), shutdown_node);
+              shutdown_timers_.emplace(topic_name, shutdown_timer);
         } 
         // 兼任なら、受け取ったものを表示するだけでなく、同トピックのpubをpublishさせるcallback
         else {
@@ -255,6 +288,17 @@ class Intermediate : public rclcpp::Node
             // Subscriber作成
             auto subscriber = create_subscription<publisher_node::msg::IntMessage>(topic_name, qos, callback);
             subscribers_.emplace(topic_name, subscriber);
+
+            // shutdownタイマー
+            auto shutdown_node = 
+              [this, &options]() -> void
+              {
+                RCLCPP_INFO(this->get_logger(), "Shutting down node...");
+                rclcpp::shutdown();
+            };
+
+            auto shutdown_timer = create_wall_timer(std::chrono::seconds(options.eval_time + 10), shutdown_node);
+            shutdown_timers_.emplace(topic_name, shutdown_timer);
         }
     }
 
@@ -272,6 +316,7 @@ class Intermediate : public rclcpp::Node
 
     std::unordered_map<std::string, uint32_t> pub_idx_;
     std::unordered_map<std::string, rclcpp::TimerBase::SharedPtr> timers_;
+    std::unordered_map<std::string, rclcpp::TimerBase::SharedPtr> shutdown_timers_;
     std::unordered_map<std::string, rclcpp::Time> start_time_pub_;
     std::unordered_map<std::string, rclcpp::Time> start_time_sub_;
     std::unordered_map<std::string, rclcpp::Time> end_time_pub_;
@@ -424,7 +469,7 @@ class Intermediate : public rclcpp::Node
         // ファイルのコピー
         try {
           std::string original_path = log_file_path;
-          ss << "../../../../performance_test/logs/" << node_name << "_log" ;
+          ss << "../../../../performance_test/logs_local/" << node_name << "_log" ;
           std::string destination_dir = ss.str();
           if (!std::filesystem::exists(destination_dir)) {
             std::filesystem::create_directories(destination_dir);
