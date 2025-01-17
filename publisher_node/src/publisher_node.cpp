@@ -75,6 +75,9 @@ class Publisher : public rclcpp::Node
     explicit Publisher(const node_options::Options & options)
     : Node(options.node_name)
     {
+      auto current_dir = get_env_var("HOST_PROJECT_DIR", "default_value");
+      RCLCPP_INFO(this->get_logger(), "Environment variable HOST_PROJECT_DIR: %s", current_dir.c_str());
+
       node_name = options.node_name;
       create_metadata_file(options);
 
@@ -161,10 +164,21 @@ class Publisher : public rclcpp::Node
       // このノードをコンテナ内で実行している場合、コンテナ外にlogsをコピーする必要がある
       for (const auto &[topic_name, publishers] : publishers_) {
         std::stringstream ss;
-        ss << ":" << node_name << "_log/" << topic_name << "_log.txt" ;
+        ss << ":/" << "root/performance_ws/src/graduate_research/performance_test/logs/" << node_name << "_log/" << topic_name << "_log.txt" ; // コンテナ内の絶対パス
         std::string log_file_path = ss.str();
-        std::string destination_path;
-        std::string copy_commnad = "docker cp " + get_container_id() + log_file_path + destination_path; 
+        ss.str("");
+        ss.clear();
+        ss << " /home/kabocha/graduate_paper/src/graduate_research/performance_test/logs/" << node_name << "_log/" << topic_name << "_log.txt" ; //ホスト側のパス
+        std::string destination_path = ss.str();
+        std::string copy_command = "docker cp " + get_container_id() + log_file_path + destination_path; 
+        RCLCPP_INFO(this->get_logger(), copy_command.c_str());
+
+        int result = std::system(copy_command.c_str());
+        if (result == 0) {
+            std::cout << "ファイルコピーに成功しました！\n";
+        } else {
+            std::cerr << "ファイルコピーに失敗しました...\n";
+    }
       }
     }
 
@@ -180,6 +194,12 @@ class Publisher : public rclcpp::Node
     std::unordered_map<std::string, uint32_t> pub_idx_;
     std::unordered_map<std::string, rclcpp::Time> start_time_;
     std::unordered_map<std::string, rclcpp::Time> end_time_;
+
+    // 環境変数を取得する関数
+    std::string get_env_var(const std::string &var_name, const std::string &default_value) {
+        const char* value = std::getenv(var_name.c_str());
+        return value ? std::string(value) : default_value;
+    }
 
     void
     create_metadata_file(const node_options::Options & options)
@@ -290,9 +310,25 @@ class Publisher : public rclcpp::Node
       }
     }
 
+    bool is_running_in_docker() {
+    std::ifstream cgroup_file("/proc/1/cgroup");
+    if (!cgroup_file.is_open()) {
+        return false; // ファイルが読めない場合はコンテナ外と判断
+    }
+
+    std::string line;
+    while (std::getline(cgroup_file, line)) {
+        if (line.find("docker") != std::string::npos ||
+            line.find("containerd") != std::string::npos) {
+            return true; // Docker関連の文字列が見つかった場合
+        }
+    }
+    return false; // それ以外の場合
+  }
+
     std::string
     get_container_id() {
-      return "a";
+      return "host1";
     }
 };
 
