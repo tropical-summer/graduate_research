@@ -17,7 +17,6 @@ RUN git clone https://github.com/jarro2783/cxxopts.git \
     && mkdir build && cd build \
     && cmake .. \
     && make && sudo make install \
-    && cd ../.. && cd root/performance_ws/src/graduate_research \
+    && cd /root/performance_ws \
     && colcon build
-
-# コンテナを起動するときのコマンド　ENVを扱うために、exec形式でありながらシェル形式を用いる(/bin/bash -c)
+    
