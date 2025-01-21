@@ -211,7 +211,7 @@ class Publisher : public rclcpp::Node
       // ファイルのコピー
       try {
         std::string original_path = metadata_file_path;
-        ss << "../../../../performance_test/logs_local/" << node_name << "_log" ;
+        ss << "../../../../src/graduate_research/performance_test/logs_local/" << node_name << "_log" ;
         std::string destination_dir = ss.str();
         if (!std::filesystem::exists(destination_dir)) {
           std::filesystem::create_directories(destination_dir);
@@ -264,7 +264,7 @@ class Publisher : public rclcpp::Node
         // ファイルのコピー (ローカルで実行するとき用)
         try {
           std::string original_path = log_file_path;
-          ss << "../../../../performance_test/logs_local/" << node_name << "_log" ;
+          ss << "../../../../src/graduate_research/performance_test/logs_local/" << node_name << "_log" ;
           std::string destination_dir = ss.str();
           if (!std::filesystem::exists(destination_dir)) {
             std::filesystem::create_directories(destination_dir);
