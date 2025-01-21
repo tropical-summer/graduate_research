@@ -13,6 +13,7 @@
 import sys
 import os
 import shutil
+import numpy as np
 
 # metadataから、2つのノードがつながっているかを判定
 # cmd_args -> dict, dict, list[str]
@@ -222,7 +223,8 @@ def measure_latency(pub_logdata, sub_logdata, topic_list):
         min_latency = min(latency_list)
         count_messages = len(latency_list)
         sum_latency = sum(latency_list)
-        ave_latency = round(sum_latency / count_messages, 6)  
+        ave_latency = round(sum_latency / count_messages, 6) 
+        std_latency = np.std(latency_list)
 
         latency_statics = {}
         latency_statics["max"] = max_latency
@@ -230,6 +232,7 @@ def measure_latency(pub_logdata, sub_logdata, topic_list):
         latency_statics["count"] = count_messages
         latency_statics["sum"] = sum_latency
         latency_statics["average"] = ave_latency
+        latency_statics["std_deviation"] = std_latency
 
         return latency_statics
     
@@ -283,6 +286,7 @@ def measure_latency(pub_logdata, sub_logdata, topic_list):
             f.write(f"min: {latency_statics["min"]}ms\n")
             f.write(f"max: {latency_statics["max"]}ms\n")
             f.write(f"average: {latency_statics["average"]}ms\n")
+            f.write(f"std_deviation: {latency_statics["std_deviation"]}ms\n")
 
             for index, latency in latency_results:
                 f.write(f"Index: {index}, Latency: {latency}ms\n")
